@@ -1,12 +1,12 @@
 name: HMM_ENV
 channels:
+  - conda-forge
+  - bioconda
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.13
+  - numpy
+  - pandas
+  - seaborn
+  - biopython
   - pip
-  - pip:
-    - matplotlib
-    - numpy
-    - pandas
-    - scipy
-    - seaborn
