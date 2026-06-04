@@ -5,6 +5,7 @@ channels:
   - defaults
 dependencies:
   - python=3.13
+  - ipykernel
   - numpy
   - pandas
   - seaborn
