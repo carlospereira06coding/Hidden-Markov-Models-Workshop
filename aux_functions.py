@@ -1,3 +1,33 @@
+r"""
+Auxiliary mathematical and data transformation utilities for the HMM implementations.
+
+Functions
+---------
+* **Random matrix generation**:
+    `random_sum(n, s=1)` 
+        creates an array of `n` random numbers that sum to `s`
+    `random_sum_mat(n, m=None, s=1)`
+        creates an `n`x`m` matrix where each row sums to `s`
+
+* **Log-Space Math**:
+    `logaddexp10(x1, x2)`
+        Computes a base-10 log-sum-exp between `x1` and `x2`
+    `logaddexp10_reduce(arr, axis=None)`
+        Computes a base-10 log-sum-exp along `arr`
+
+* **State Translation**:
+    `names_to_indexes(sequence, mapping)`
+        Translates a `sequence` of state/value names to an array of indices
+    `indexes_to_names(sequence, mapping)`
+        Translates a `sequence` of state/value indices to an array of their user-defined names
+
+* **Others**:
+    `seqobs_pretty_print(seq, obs)`
+        prints a readable alignment between a state sequence and an observation sequence
+    `parse_phobius_model(filename)`
+        Translates the phobius model to the proper variables
+"""
+
 from __future__ import annotations
 
 import textwrap
@@ -5,7 +35,18 @@ import numpy as np
 from numpy.typing import NDArray
 from my_types import *
 
+
 def random_sum(n, s=1):
+    """Generates an array of `n` random numbers that add to `s`
+
+    Args:
+        n (int): desired length of the array
+        s (int, optional): total sum of the array. Defaults to 1.
+
+    Returns:
+        array (array_like): the created array
+    """
+
     array = []
     lim = s
     for _ in range(n-1):
@@ -15,24 +56,76 @@ def random_sum(n, s=1):
     array.append(s-np.sum(array))
     return array
 
-def random_sum_mat(n, m=None, seed=None):
+def random_sum_mat(n, m=None, s=1, *, seed=None):
+    """Generates a 2d matrix of dimensions `n`x`m` if
+    `m` is provided, otherwise, a square `n`x`n` matrix 
+    where each row sums to `s`
+
+    Args:
+        n (int): number of rows
+        m (int, optional): number of columns. Defaults to `n`.
+        s (int, optional, default 1): total sum that each row sums to.
+        seed (int, optional): seed passed to `np.random.seed` for reproducible RNG. Defaults to None.
+
+    Returns:
+        mat (array_like): the created matrix
+    """
     np.random.seed(seed)
     m = m or n
     mat=[]
     for _ in range(n):
-        mat.append(random_sum(m))
+        mat.append(random_sum(m, s))
     return mat
 
 
 def names_to_indexes(name_sequence: SeqInput[V], index_map: list[V]) -> NDArray[np.int64]:
+    """Transforms `name_sequence` into their respective indices in `index_map`
+
+    Args:
+        name_sequence (SeqInput of V): the sequence of names to translate
+        index_map (list of V): the name list to use as reference
+
+    Returns:
+        indices (ndarray, int): the correspondent index array
+    """
+
     if isinstance(name_sequence[0], (int, np.int64)): return np.array(name_sequence)
     return np.array(list(map(lambda val: index_map.index(val), name_sequence)))
 
 def indexes_to_names(index_sequence: Sequence[int], name_map: list[V]) -> list[V]:
+    """Transforms `index_sequence` into their respective names in `index_map`
+
+    Args:
+        index_sequence (Sequence of int): the sequence of indices to translate
+        name_map (list of V): the name list to use as reference
+
+    Returns:
+        names (list of V): the correspondent name array
+    """
     return list(map(lambda val: name_map[val], index_sequence))
 
 
 def seqobs_pretty_print(seq: Sequence, obs: Sequence) -> str:
+    """Generates a readable alignment between `seq` and `obs`.
+
+    If all elements of `seq` and `obs` are single characters, 
+    there is no space between characters and the state sequence
+    is directly below the observations, otherwise, consecutive
+    states are spaced out and separated by arrows, and observations
+    are presented below the states.
+
+
+    Args:
+        seq (Sequence): sequence of states
+        obs (Sequence): sequence of observations
+
+    Raises:
+        ValueError: if `seq` and `obs` are not the same length
+
+    Returns:
+        message (str): the created alignment
+    """
+
     if len(seq) != len(obs):
         raise ValueError("sequences must be the same length")
     
@@ -86,27 +179,43 @@ def seqobs_pretty_print(seq: Sequence, obs: Sequence) -> str:
 
 
 def logaddexp10(x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
-    """função equivalente a `np.logaddexp` em base 10"""
+    """Function equivalent to `np.logaddexp` in base 10
+
+    Args:
+        x1 (array_like): the first array
+        x2 (array_like): the second array
+
+    Returns:
+        result (ndarray): the array of summed values in log-space
+    """
+
     max_val = np.maximum(x1, x2)
     
     max_val[np.isinf(max_val) & (max_val < 0)] = 0.0 
     return max_val + np.log10(10**(x1 - max_val) + 10**(x2 - max_val))
 
 def logaddexp10_reduce(arr: np.ndarray, axis: int = None) -> np.ndarray | float:
-    """
-    **função equivalente a `np.logaddexp.reduce` em base 10**
+    """Function equivalent to `np.logaddexp.reduce` in base 10
     
-    truque para somar valores em espaço logarítmico:
+    Trick to sum values in logarithmic space:
 
     log_10(a+b) = log_10(10^a + 10^b)
 
-    para que todos os valores fiquem entre 0 e 1, 
-    passa-se o maior valor para fora de modo a que 
-    os expoentes fiquem todos negativos:
+    To make every value rest between 0 and 1, 
+    the biggest value is pulled out so that all
+    exponents become negative:
 
-    Seja a > b
+    Let a > b
 
     log_10(10^a + 10^b) = a + log_10( 1 + 10^(b-a) )
+
+    Args:
+        arr (array_like): the array to perform the calculations in
+        axis (int, optional): the axis along which to perform the calculations. Defaults to None.
+
+    Returns:
+        result (ndarray or float): An array with the same shape as `arr`, with the specified axis removed. 
+            If `arr` is a 0-d array, or if `axis` is None, a scalar is returned.
     """
     
     max_val = np.max(arr, axis=axis, keepdims=True) if axis is not None else np.max(arr)
@@ -130,6 +239,18 @@ def logaddexp10_reduce(arr: np.ndarray, axis: int = None) -> np.ndarray | float:
     
 
 def parse_phobius_model(file = "phobius.model"):
+    """parses the phobius model into usable variables
+
+    Args:
+        file (str, optional): file name where the model is. Defaults to "phobius.model".
+
+    Returns:
+        out (tuple of (Matrix2D, Emission2D, \
+                        list of str, list of str, \
+                        Vector1D, dict of {str \: str})): \
+            variables to be used in the definition of the `HiddenMarkovModel` and Viterbi decoding
+    """
+    
     states: dict[str, int] = {}
     values: dict[str, int] = {}
 
