@@ -1,3 +1,19 @@
+"""
+Actual Markov Model implementations
+
+Supported Classes
+-----------------
+    MarkovChain: 
+        Basic discrete-time stochastic model tracking 
+        state transition probabilities over time.
+
+    HiddenMarkovModel: 
+        Doubly stochastic process tracking a latent first-order 
+        Markov chain through a secondary sequence of observable emissions.
+        Supports the main HMM algorithms for probability calculation, hidden
+        state decoding and model training
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,6 +25,44 @@ from my_types import *
 from aux_functions import *
 
 class MarkovChain[StateT=int]:
+    """First order Markov Chain for the modeling of Markov processes
+    
+    Parameters
+    ---------------
+    StateT : type, default int
+        The structural type used to identify internal hidden states.
+
+    Attributes
+    ----------
+    nstates : int (NStates)
+        The total number of unique hidden states in the system.
+    
+    states : list of StateT
+        Unique identifiers corresponding to the row positions of `tmat`.
+
+        
+    initial_dist : Vector1D, float64
+        The distribution vector mapping each state's initial probability
+        Shape: `(NStates,)`
+
+    tmat : Matrix2D, float64
+        The transition matrix mapping state transitions.
+        Shape: `(NStates, NStates)`
+
+    stationary_state : Vector1D, float64
+        The distribution vector mapping each state's prevalence over time
+        Shape: `(NStates,)`
+
+        
+    indexed_init_dist : DataFrame
+        pandas `DataFrame` for clearer visualization of `initial_dist`
+
+    indexed_matrix : DataFrame
+        pandas `DataFrame` for clearer visualization of `tmat`
+
+    indexed_stationary : DataFrame
+        pandas `DataFrame` for clearer visualization of `stationary_state`
+    """
 
     tmat:               Matrix2D[np.float64]
     states:             list[StateT]
@@ -21,6 +75,31 @@ class MarkovChain[StateT=int]:
                  transition_matrix:     ArrayLike, 
                  states:                Optional[Sequence[StateT]]  = None, 
                  initial_distribution:  Optional[ArrayLike]         = None):
+        
+        """Markov Chain initialization via structural matrices or parameter shapes.
+
+        Args
+        ----
+        transition_matrix : array_like, optional
+            The square transition probability matrix.
+
+        states : Sequence of StateT, optional
+            Custom identifiers for the hidden states. 
+            If omitted, defaults to zero-indexed integer ids.
+
+        initial_distribution : array_like, optional
+            Prior model probability distribution array. Shape: `(NStates,)`.
+            If None, defaults to the stationary distribution (`stationary_state`)
+
+        Raises
+        ------
+        ValueError
+            If the transition matrix is not square
+
+        ValueError
+            If the rows of the provided `transition_matrix` fail to sum to 1.0 
+            (or 0.0 for terminal nodes) within a 5-decimal toleration margin.
+        """
 
         self.tmat = np.array(transition_matrix)
 
@@ -62,7 +141,41 @@ class MarkovChain[StateT=int]:
                     start: int | StateT | None = None,
                     *,
                     seed: int = None,
-                    as_array: bool = False) -> None | NDArray:
+                    as_array: bool = False) -> None | np.ndarray[tuple[int], StateT]:
+        
+        """
+        Simulates a random walk through the chain and prints the
+        result if desired
+        
+
+        Args
+        ----
+        steps : int
+            number of steps of the walk
+        
+        start : int or StateT, optional
+            specific state to start the walk in. 
+            If None, one is chosen based on the initial probabilities
+        
+        seed : int, optional, keyword-only
+            Seed integer to ensure reproducible walks
+
+        as_array : boolean, optional, keyword-only, default False
+            wether to return the walk as an array or print the result
+
+            
+        Returns
+        -------
+        ndarray or None
+            depending on the `as_array` flag:
+            
+            * **ndarray** : Returned when `as_array=True`. 
+                A 1D array of shape `(steps,)` containing the sequence of visited `StateT` labels.
+
+            * **None** : Returned when `as_array=False`. The sequence is processed
+                as a string with the states joined by arrows ( → ) and printed directly
+                to standard output.
+        """
         
         np.random.seed(seed)
         cur_state = start if start is not None else np.random.choice(self.states, p=self.initial_dist)
@@ -88,6 +201,51 @@ class MarkovChain[StateT=int]:
                      num_repeats:   int | None = None,
                      *,
                      seed: int = None) -> Vector1D[np.float64]:
+        
+        """Employs the specified method to calculate the chain's stationary distribution
+
+        
+        Args
+        ----
+        method : {"MonteCarlo", "RepMatMul", "LeftEigVec"}
+            The method to use for the calculations.
+
+            * *Montecarlo*: Performs a random walk with `num_repeats`.
+                The stationary distribution of each state is the ratio of the
+                number of times it appeared on the walk over the total length
+                of the walk. 
+                (As `num_repeats` tends to infinity, the proportions converge)
+            * *Repeated Matrix Multiplication (RepMatMul)*: Multiplies the
+                transition matrix by itself `num_repeats` times. 
+                The stationary distribution is one of the rows of the resulting
+                matrix. 
+                (As `num_repeats` tends to infinity, all the rows converge to the 
+                same values across each column.)
+            * *Left Eigenvectors (LeftEigVec)*: Determines the stationary distribution
+                as being the left eigenvector correspondent to the eienvalue 1 of the
+                transition matrix where the values sum to 1
+        
+        num_repeats : int, optional
+            number of:
+                * *steps* of the random walk if `method="MonteCarlo"`
+                * *self-multiplications* if `method="RepMatMul"`
+        
+        seed : int, optional, keyword-only
+            Seed integer to ensure reproducible walks if `method="MonteCarlo"`
+
+
+        Raises
+        ------
+        NotImplementedError
+            if the method string is not recognized
+
+            
+        Returns
+        -------
+        pi : Vector1D of float64
+            the stationary probability distribution of the chain. 
+            Shape: `(NStates,)`
+        """
         
         methods = ["MonteCarlo", "RepMatMul", "LeftEigVec"]
         if method not in methods: 
@@ -122,6 +280,76 @@ class MarkovChain[StateT=int]:
     
 
 class HiddenMarkovModel[StateT=int, ValueT=int]:
+    """A Hidden Markov Model with customizable hidden and observable layers.
+
+    
+    Parameters
+    ---------------
+    StateT : type, default int
+        The structural type used to identify internal hidden states.
+    ValueT : type, default int
+        The structural type used to identify observable emissions.
+
+        
+    Attributes
+    ----------
+    chain : MarkovChain
+        The underlying Markov Chain tracking transition logic.
+
+        
+    nstates : int (NStates)
+        The total number of unique hidden states in the system.
+
+    nvalues : int (NValues)
+        The total number of unique observable emissions.
+
+        
+    states : list of StateT
+        Unique identifiers corresponding to the row positions of `tmat`.
+
+    values : list of ValueT
+        Unique identifiers corresponding to the column positions of `emat`.
+        
+
+    initial_dist : Vector1D, float64
+        The distribution vector mapping each state's initial probability
+        Shape: `(NStates,)`
+
+    tmat : Matrix2D, float64
+        The transition matrix mapping state transitions.
+        Shape: `(NStates, NStates)`
+
+    emat : Emission2D, float64
+        The emission matrix mapping hidden states to observations (values). 
+        Shape: `(NStates, NValues)`
+
+    stationary_state : Vector1D, float64
+        The distribution vector mapping each state's prevalence over time
+        Shape: `(NStates,)`
+
+        
+    indexed_init_dist : DataFrame
+        pandas `DataFrame` for clearer visualization of `initial_dist`
+
+    indexed_tmat : DataFrame
+        pandas `DataFrame` for clearer visualization of `tmat`
+
+    indexed_emat : DataFrame
+        pandas `DataFrame` for clearer visualization of `emat`
+
+    indexed_stationary : DataFrame
+        pandas `DataFrame` for clearer visualization of `stationary_state`
+
+
+    log_pi : ndarray
+        The underflow-safe, base-10 logarithmic initial distribution vector.
+
+    log_tmat : ndarray
+        The underflow-safe, base-10 logarithmic state transition matrix.
+
+    log_emat : ndarray
+        The underflow-safe, base-10 logarithmic observation emission matrix.
+    """
 
     tmat:               Matrix2D[np.float64]
     states:             list[StateT]
@@ -131,46 +359,89 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
     values:             list[ValueT]
     nvalues:            NValues
 
-    stationary_state:   Vector1D[np.float64]
     initial_dist:       Vector1D[np.float64]
     
     def __init__(self, 
                  chain_or_transition_matrix:    Optional[MarkovChain[StateT] | ArrayLike]   = None, 
-                 emission_matrix:               Optional[Emission2D[np.float64]]            = None,
+                 emission_matrix:               Optional[ArrayLike]                         = None,
                  *,
                  states:                        Optional[Sequence[StateT]]                  = None, 
                  values:                        Optional[Sequence[ValueT]]                  = None, 
                  initial_distribution:          Optional[ArrayLike]                         = None,
                  seed = None):
         
-        self.tmat = None
-        self.emat = None
-        random_params = False
+        """Hidden Markov Model initialization via structural matrices or parameter shapes.
 
-        if chain_or_transition_matrix is None and emission_matrix is None:
-            if not values is None and states is None:
-                raise ValueError("É necessário fornecer no mínimo\nou as matrizes de probabilidade\nou os estados e valores")
-            
-            random_params = True
         
-        if random_params:
+        Args
+        ----
+        chain_or_transition_matrix : MarkovChain of StateT or array_like, optional
+            The transition logic. Can be passed directly as a `MarkovChain` instance 
+            or as a square transition probability matrix. 
+            If None, `states` must be passed to initialize a randomized matrix.
+            
+        emission_matrix : array_like, optional
+            A 2-dimensional probability matrix mapping states to observable emissions. 
+            Rows must sum to 1.0 (or 0.0 for terminal nodes). 
+            If None, `values` and, either `chain_or_transition_matrix` or `states`, 
+            must be passed to initialize a randomized matrix.
+
+        states : Sequence of StateT, optional, keyword-only
+            Custom identifiers for the hidden states. Extracted automatically 
+            if an active `MarkovChain` is passed to the first argument, otherwise,
+            used to construct the underlying `MarkovChain`.
+
+        values : Sequence of ValueT, optional, keyword-only
+            Custom identifiers for the observable emissions. If omitted 
+            while an `emission_matrix` is present, defaults to zero-indexed integer ids.
+
+        initial_distribution : array_like, optional, keyword-only
+            Prior model probability distribution array. Shape: `(NStates,)`. 
+            Passed directly to construct the underlying `MarkovChain`.
+
+        seed : int, optional, keyword-only
+            An optional seed integer to fix the state of the random distribution 
+            matrix generators, ensuring reproducible parameter generations.
+
+            
+        Raises
+        ------
+        ValueError
+            If there is not sufficient information about the system. That is, if either 
+            both `chain_or_transition_matrix` and `states` are omitted, or both 
+            `emission_matrix` and `values` are omitted.
+
+        ValueError
+            If the rows of the provided `emission_matrix` fail to sum to 1.0 
+            (or 0.0 for terminal nodes) within a 5-decimal toleration margin.
+        """
+
+        
+        self.tmat = None
+        self.states = None
+
+        self.emat = None
+        self.values = None
+
+        if chain_or_transition_matrix is None:
+            if states is None:
+                raise ValueError("Parâmetros insuficientes, é necessário, no mínimo, a matriz de transição ou os estados")
+                
             self.states = states
-            self.values = values
-
             self.nstates = len(self.states)
-            self.nvalues = len(self.values)
-
-            self.tmat = random_sum_mat(self.nstates, self.nstates, seed)
-            self.emat = random_sum_mat(self.nstates, self.nvalues, seed)
+            self.tmat = random_sum_mat(self.nstates, self.nstates, seed=seed)
         
         if isinstance(chain_or_transition_matrix, MarkovChain):
             self.chain = chain_or_transition_matrix
         else:
-            if not self.tmat: self.tmat = chain_or_transition_matrix
+            if self.tmat is None: self.tmat = chain_or_transition_matrix
             self.chain = MarkovChain(self.tmat, states, initial_distribution)
 
         self.tmat = self.chain.tmat
         self.indexed_tmat = self.chain.indexed_matrix
+
+        self.nstates = self.chain.nstates
+        self.states = self.chain.states
 
         self.stationary_state = self.chain.stationary_state
         self.indexed_stationary = self.chain.indexed_stationary
@@ -178,19 +449,24 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         self.initial_dist = self.chain.initial_dist
         self.indexed_init_dist = self.chain.indexed_init_dist
         
-        if not self.emat: self.emat = emission_matrix
+        
+        if emission_matrix is None:
+            if values is None:
+                raise ValueError("Parâmetros insuficientes, é necessário, no mínimo, a matriz de emissão ou os valores")
+
+            self.values = values
+            self.nvalues = len(self.values)
+            self.emat = random_sum_mat(self.nstates, self.nvalues, seed=seed)
+            
+        if self.emat is None: self.emat = emission_matrix
         
         self.emat = np.array(self.emat)
 
         if not (np.all(np.logical_or(self.emat.sum(1).round(5) == 1, self.emat.sum(1).round(5) == 0))):
             raise ValueError("outgoing probabilities do not add up to 1 or 0")
         
-        self.nstates = self.chain.nstates
         self.nvalues = self.emat.shape[1]
-
-        self.states = self.chain.states
-        self.values = list(values) or list(range(self.nvalues))
-
+        self.values = list(range(self.nvalues)) if values is None else list(values)
         self.indexed_emat = pd.DataFrame(self.emat, self.states, self.values)
 
         eps = 1e-300    # evitar log(0)
@@ -200,6 +476,27 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
 
     def calculate_probability(self, states: SeqInput[StateT], observed: SeqInput[ValueT], *, log = True) -> float:
+        """Calculates the joint probability of a state sequence and observation sequence
+
+        
+        Args
+        ----
+        states : SeqInput of StateT
+            The sequence of states
+
+        observed : SeqInput of ValueT
+            The sequence of values
+        
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space
+
+            
+        Returns
+        -------
+        probability : float
+            the joint probability if `log=False` or its base-10 logarithm if `log=True`
+        """
+
         observed = names_to_indexes(observed, self.values)
         states = names_to_indexes(states, self.states)
 
@@ -223,7 +520,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                     *,
                     seed:       int = None,
                     emit:       Literal[False],
-                    as_arrays:  Literal[True]           ) -> tuple[NDArray, NDArray]: ...
+                    as_arrays:  Literal[True]           ) -> NDArray: ...
     @overload  
     def random_walk(self, 
                     steps: int, 
@@ -231,7 +528,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                     *,
                     seed:       int = None,
                     emit:       Literal[True] = True,
-                    as_arrays:  Literal[True]           ) -> NDArray: ...
+                    as_arrays:  Literal[True]           ) -> tuple[NDArray, NDArray]: ...
     @overload  
     def random_walk(self, 
                     steps: int, 
@@ -249,6 +546,47 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                     emit:       bool = True,
                     as_arrays:  bool = False            ) -> Union[tuple[NDArray, NDArray], NDArray, None]:
         
+        """
+        Simulates a random walk through the chain making random
+        emissions for each state if desired and prints the result if desired
+        
+
+        Args
+        ----
+        steps : int
+            number of steps of the walk
+        
+        start : int or StateT, optional
+            specific state to start the walk in. 
+            If None, one is chosen based on the initial probabilities
+        
+        seed : int, optional, keyword-only
+            Seed integer to ensure reproducible walks
+
+        emit : boolean, optional, keyword-only, default True
+            wether to simulate emissions along the walk
+
+        as_arrays : boolean, optional, keyword-only, default False
+            wether to return the walk (and emissions if `emit=True`) as arrays or print the result
+
+            
+        Returns
+        -------
+        ndarray, tuple, or None
+            depending on the `emit` and `as_array` flags:
+            
+            * **ndarray** : Returned when `as_array=True`and `emit=False`. 
+                A 1D array of shape `(steps,)` containing the sequence of visited `StateT` labels.
+
+            * **tuple of ndarray** : Returned when `as_array=True`and `emit=True`. 
+                A tuple of two 1D arrays of shape `(steps,)`. The first containing the sequence of 
+                visited `StateT` labels. The second containing the sequence of emited `ValueT` labels. 
+
+            * **None** : Returned when `as_array=False`. The sequence is processed
+                as a string according to `seqobs_pretty_print` and printed directly
+                to standard output.
+        """
+        
         if not emit:
             return self.chain.random_walk(steps, start, seed=seed, as_array=as_arrays)
         
@@ -260,7 +598,25 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         print(seqobs_pretty_print(walk, observations))
 
     
-    def random_emissions(self, hidden_sequence: Sequence[StateT], *, seed: int = None) -> NDArray:
+    def random_emissions(self, hidden_sequence: SeqInput[StateT], *, seed: int = None) -> NDArray:
+        """Simulates random emissions from a provided state sequence
+
+        
+        Args
+        ----
+        hidden_sequence : SeqInput of StateT
+            The sequence of hidden states
+
+        seed : int, optional, keyword-only
+            Seed integer to ensure reproducible emissions
+
+            
+        Returns
+        -------
+        observations : NDArray 
+            The array of emissions.
+        """
+
         np.random.seed(seed)
         hidden_sequence = names_to_indexes(hidden_sequence, self.states)
         observations = np.array([])
@@ -276,13 +632,40 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
 
     @overload
-    def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas: Literal[False] = False) -> np.float64:...
+    def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas: Literal[True]) -> AlgArray2D[np.float64]:...
     @overload
-    def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas: Literal[True] = False) -> AlgArray2D[np.float64]:...
+    def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas: Literal[False] = False) -> np.float64:...
 
     def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas = False) -> AlgArray2D[np.float64] | np.float64:
+        """computes the probability of a sequence of observations
+
+        
+        Args
+        ----
+        observed : SeqInput of ValueT
+            The sequence of observations
+            
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space
+        
+        use_alfas : boolean, optional, keyword-only, default False
+            Wether to return the matrix used for the calculations
+
+            
+        Returns
+        -------
+        AlgArray2D or float64
+            depending on the `use_alfas` flag:
+
+            * **AlgArray2D of float64** : Returned when `use_alfas=True`
+                The partial probabilities matrix calculated throughout
+                the algorithm
+
+            * **float64** : Returned when `use_alfas=False`
+                the total probability of observing the `observed` sequence
+        """
+
         T: Time = len(observed)
-        #transformar valores em indices
         observed = names_to_indexes(observed, self.values)
 
         alfas: AlgArray2D[np.float64] = np.zeros((T, self.nstates))
@@ -308,12 +691,41 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         
         return total_probability
     
+
     @overload
     def backward_algorithm(self, observed: SeqInput[ValueT], *, log = True,  use_betas: Literal[False] = False) -> np.float64:...
     @overload
     def backward_algorithm(self, observed: SeqInput[ValueT], *, log = True,  use_betas: Literal[True] = False) -> AlgArray2D[np.float64]:...
 
     def backward_algorithm(self, observed: SeqInput[ValueT], *, log = True,  use_betas = False) -> AlgArray2D[np.float64] | np.float64:
+        """computes the probability of a sequence of observations
+
+        
+        Args
+        ----
+        observed : SeqInput of ValueT
+            The sequence of observations
+            
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space
+        
+        use_betas : boolean, optional, keyword-only, default False
+            Wether to return the matrix used for the calculations
+
+            
+        Returns
+        -------
+        AlgArray2D or float64
+            depending on the `use_betas` flag:
+
+            * **AlgArray2D of float64** : Returned when `use_betas=True`
+                The partial probabilities matrix calculated throughout
+                the algorithm
+
+            * **float64** : Returned when `use_betas=False`
+                the total probability of observing the `observed` sequence
+        """
+        
         T: Time = len(observed)
         
         observed = names_to_indexes(observed, self.values)
@@ -611,7 +1023,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
             return new_tmat, new_emat, new_pi
     
-    def baum_welch_algorithm(self, sequences: list[SeqInput[ValueT]], *, convergence_limit: float = 1e-10, log = True, verbose = 0):
+    def baum_welch_algorithm(self, sequences: list[SeqInput[ValueT]], *, max_loops: int = 20, convergence_limit: float = 1e-10, log = True, verbose = 0):
         converged = False
         i=0
         while not converged:
@@ -625,7 +1037,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
             self.tmat = new_tmat
             self.emat = new_emat
             self.initial_dist = new_pi
-            if i > 20:
+            if i > max_loops:
                 raise Exception("Os parâmetros não convergiram")
         
         # re-calcular distribuição estacionária
