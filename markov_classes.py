@@ -1,21 +1,22 @@
 """
-Actual Markov Model implementations
+Actual Markov Model implementations.
 
 Supported Classes
 -----------------
-    MarkovChain: 
+    **MarkovChain**: 
         Basic discrete-time stochastic model tracking 
         state transition probabilities over time.
 
-    HiddenMarkovModel: 
+    **HiddenMarkovModel**: 
         Doubly stochastic process tracking a latent first-order 
         Markov chain through a secondary sequence of observable emissions.
         Supports the main HMM algorithms for probability calculation, hidden
-        state decoding and model training
+        state decoding and model training.
 """
 
 from __future__ import annotations
 
+import textwrap
 import numpy as np
 import pandas as pd
 import scipy.linalg as scyla # (sc)ip(y).(l)in(a)lg :D
@@ -24,14 +25,20 @@ from numpy.typing import ArrayLike
 from my_types import *
 from aux_functions import *
 
+
+EPSILON = 1e-300    # evitar log(0)
+
+
 class MarkovChain[StateT=int]:
-    """First order Markov Chain for the modeling of Markov processes
+    """First order Markov Chain for the modeling of Markov processes.
     
+
     Parameters
     ---------------
     StateT : type, default int
         The structural type used to identify internal hidden states.
 
+        
     Attributes
     ----------
     nstates : int (NStates)
@@ -42,26 +49,26 @@ class MarkovChain[StateT=int]:
 
         
     initial_dist : Vector1D, float64
-        The distribution vector mapping each state's initial probability
+        The distribution vector, mapping each state's initial probability.
         Shape: `(NStates,)`
 
     tmat : Matrix2D, float64
-        The transition matrix mapping state transitions.
+        The transition matrix, mapping state transitions.
         Shape: `(NStates, NStates)`
 
     stationary_state : Vector1D, float64
-        The distribution vector mapping each state's prevalence over time
+        The distribution vector, mapping each state's prevalence over time.
         Shape: `(NStates,)`
 
         
     indexed_init_dist : DataFrame
-        pandas `DataFrame` for clearer visualization of `initial_dist`
+        pandas `DataFrame` for clearer visualization of `initial_dist`.
 
     indexed_matrix : DataFrame
-        pandas `DataFrame` for clearer visualization of `tmat`
+        pandas `DataFrame` for clearer visualization of `tmat`.
 
     indexed_stationary : DataFrame
-        pandas `DataFrame` for clearer visualization of `stationary_state`
+        pandas `DataFrame` for clearer visualization of `stationary_state`.
     """
 
     tmat:               Matrix2D[np.float64]
@@ -76,11 +83,12 @@ class MarkovChain[StateT=int]:
                  states:                Optional[Sequence[StateT]]  = None, 
                  initial_distribution:  Optional[ArrayLike]         = None):
         
-        """Markov Chain initialization via structural matrices or parameter shapes.
+        """Markov Chain initialization.
 
+        
         Args
         ----
-        transition_matrix : array_like, optional
+        transition_matrix : array_like
             The square transition probability matrix.
 
         states : Sequence of StateT, optional
@@ -89,12 +97,13 @@ class MarkovChain[StateT=int]:
 
         initial_distribution : array_like, optional
             Prior model probability distribution array. Shape: `(NStates,)`.
-            If None, defaults to the stationary distribution (`stationary_state`)
+            If None, defaults to the stationary distribution (`stationary_state`).
 
+        
         Raises
         ------
         ValueError
-            If the transition matrix is not square
+            If the transition matrix is not square.
 
         ValueError
             If the rows of the provided `transition_matrix` fail to sum to 1.0 
@@ -103,6 +112,7 @@ class MarkovChain[StateT=int]:
 
         self.tmat = np.array(transition_matrix)
 
+        # validar parâmetros
         if self.tmat.shape[0] != self.tmat.shape[1]: 
             raise ValueError("transmission matrix is not square")
         
@@ -145,35 +155,35 @@ class MarkovChain[StateT=int]:
         
         """
         Simulates a random walk through the chain and prints the
-        result if desired
+        result if desired.
         
 
         Args
         ----
         steps : int
-            number of steps of the walk
+            Number of steps of the walk.
         
         start : int or StateT, optional
-            specific state to start the walk in. 
-            If None, one is chosen based on the initial probabilities
+            Specific state to start the walk in. 
+            If None, one is chosen based on the initial probabilities.
         
         seed : int, optional, keyword-only
-            Seed integer to ensure reproducible walks
+            Seed integer to ensure reproducible walks.
 
         as_array : boolean, optional, keyword-only, default False
-            wether to return the walk as an array or print the result
+            Wether to return the walk as an array.
 
             
         Returns
         -------
         ndarray or None
-            depending on the `as_array` flag:
+            Depending on the `as_array` flag:
             
             * **ndarray** : Returned when `as_array=True`. 
                 A 1D array of shape `(steps,)` containing the sequence of visited `StateT` labels.
 
             * **None** : Returned when `as_array=False`. The sequence is processed
-                as a string with the states joined by arrows ( → ) and printed directly
+                as a string with the states joined by arrows (→) and printed directly
                 to standard output.
         """
         
@@ -202,7 +212,7 @@ class MarkovChain[StateT=int]:
                      *,
                      seed: int = None) -> Vector1D[np.float64]:
         
-        """Employs the specified method to calculate the chain's stationary distribution
+        """Employs the specified method to calculate the chain's stationary distribution.
 
         
         Args
@@ -210,11 +220,11 @@ class MarkovChain[StateT=int]:
         method : {"MonteCarlo", "RepMatMul", "LeftEigVec"}
             The method to use for the calculations.
 
-            * *Montecarlo*: Performs a random walk with `num_repeats`.
+            * *Monte Carlo*: Performs a random walk with `num_repeats`.
                 The stationary distribution of each state is the ratio of the
                 number of times it appeared on the walk over the total length
                 of the walk. 
-                (As `num_repeats` tends to infinity, the proportions converge)
+                (As `num_repeats` tends to infinity, the proportions converge.)
             * *Repeated Matrix Multiplication (RepMatMul)*: Multiplies the
                 transition matrix by itself `num_repeats` times. 
                 The stationary distribution is one of the rows of the resulting
@@ -222,36 +232,37 @@ class MarkovChain[StateT=int]:
                 (As `num_repeats` tends to infinity, all the rows converge to the 
                 same values across each column.)
             * *Left Eigenvectors (LeftEigVec)*: Determines the stationary distribution
-                as being the left eigenvector correspondent to the eienvalue 1 of the
+                as being the left eigenvector correspondent to the eigenvalue 1 of the
                 transition matrix where the values sum to 1
         
         num_repeats : int, optional
-            number of:
-                * *steps* of the random walk if `method="MonteCarlo"`
-                * *self-multiplications* if `method="RepMatMul"`
+            Number of:
+                * *steps* of the random walk if `method="MonteCarlo"`.
+                * *self-multiplications* if `method="RepMatMul"`.
         
         seed : int, optional, keyword-only
-            Seed integer to ensure reproducible walks if `method="MonteCarlo"`
+            Seed integer to ensure reproducible walks if `method="MonteCarlo"`.
 
 
         Raises
         ------
         NotImplementedError
-            if the method string is not recognized
+            If the method string is not recognized.
 
             
         Returns
         -------
         pi : Vector1D of float64
-            the stationary probability distribution of the chain. 
+            The stationary probability distribution of the chain. 
             Shape: `(NStates,)`
         """
         
-        methods = ["MonteCarlo", "RepMatMul", "LeftEigVec"]
+        methods = ["montecarlo", "repmatmul", "lefteigvec"]
+        method = method.lower()
         if method not in methods: 
             raise NotImplementedError("method not implemented or invalid method name")
         
-        if method == "MonteCarlo": #seria mais eficiente fazer durante o loop da random walk
+        if method == "montecarlo": #seria mais eficiente fazer durante o loop da random walk
             LARGE_NUMBER_TM = num_repeats if num_repeats is not None else 10**4
             big_walk = self.random_walk(LARGE_NUMBER_TM, seed=seed, as_array=True) # make array
             uniq_c = np.unique_counts(big_walk)
@@ -259,14 +270,14 @@ class MarkovChain[StateT=int]:
             ordered_counts = np.array([counts_lookup.get(state, 0) for state in self.states], dtype=np.float64)
             pi = ordered_counts / ordered_counts.sum()
 
-        elif method == "RepMatMul":
+        elif method == "repmatmul":
             pi = self.tmat
             LARGE_NUMBER_TM = num_repeats if num_repeats is not None else 10
             for _ in range(LARGE_NUMBER_TM):
                 pi = pi @ pi
             pi=pi[0]
 
-        elif method == "LeftEigVec":
+        elif method == "lefteigvec":
             # valores e vetores próprios (reais e complexos)
             val, left = scyla.eig(self.tmat, left=True, right=False)
     
@@ -305,40 +316,40 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
         
     states : list of StateT
-        Unique identifiers corresponding to the row positions of `tmat`.
+        Unique identifiers of each hidden state, corresponding to the row positions of `tmat`.
 
     values : list of ValueT
-        Unique identifiers corresponding to the column positions of `emat`.
+        Unique identifiers of the possible emissions, corresponding to the column positions of `emat`.
         
 
     initial_dist : Vector1D, float64
-        The distribution vector mapping each state's initial probability
+        The distribution vector, mapping each state's initial probability.
         Shape: `(NStates,)`
 
     tmat : Matrix2D, float64
-        The transition matrix mapping state transitions.
+        The transition matrix, mapping state transitions.
         Shape: `(NStates, NStates)`
 
     emat : Emission2D, float64
-        The emission matrix mapping hidden states to observations (values). 
+        The emission matrix, mapping hidden states to observations (values).
         Shape: `(NStates, NValues)`
 
     stationary_state : Vector1D, float64
-        The distribution vector mapping each state's prevalence over time
+        The distribution vector, mapping each state's prevalence over time.
         Shape: `(NStates,)`
 
         
     indexed_init_dist : DataFrame
-        pandas `DataFrame` for clearer visualization of `initial_dist`
+        pandas `DataFrame` for clearer visualization of `initial_dist`.
 
     indexed_tmat : DataFrame
-        pandas `DataFrame` for clearer visualization of `tmat`
+        pandas `DataFrame` for clearer visualization of `tmat`.
 
     indexed_emat : DataFrame
-        pandas `DataFrame` for clearer visualization of `emat`
+        pandas `DataFrame` for clearer visualization of `emat`.
 
     indexed_stationary : DataFrame
-        pandas `DataFrame` for clearer visualization of `stationary_state`
+        pandas `DataFrame` for clearer visualization of `stationary_state`.
 
 
     log_pi : ndarray
@@ -359,6 +370,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
     values:             list[ValueT]
     nvalues:            NValues
 
+    stationary_state:   Vector1D[np.float64]
     initial_dist:       Vector1D[np.float64]
     
     def __init__(self, 
@@ -396,7 +408,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
             while an `emission_matrix` is present, defaults to zero-indexed integer ids.
 
         initial_distribution : array_like, optional, keyword-only
-            Prior model probability distribution array. Shape: `(NStates,)`. 
+            Prior probability distribution array. Shape: `(NStates,)`. 
             Passed directly to construct the underlying `MarkovChain`.
 
         seed : int, optional, keyword-only
@@ -469,32 +481,32 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         self.values = list(range(self.nvalues)) if values is None else list(values)
         self.indexed_emat = pd.DataFrame(self.emat, self.states, self.values)
 
-        eps = 1e-300    # evitar log(0)
-        self.log_pi:     Vector1D[np.float64]   = np.log10(self.initial_dist + eps)
-        self.log_tmat:   Matrix2D[np.float64]   = np.log10(self.tmat + eps)
-        self.log_emat:   Emission2D[np.float64] = np.log10(self.emat + eps)
+        self.log_pi:     Vector1D[np.float64]   = np.log10(self.initial_dist + EPSILON)
+        self.log_tmat:   Matrix2D[np.float64]   = np.log10(self.tmat + EPSILON)
+        self.log_emat:   Emission2D[np.float64] = np.log10(self.emat + EPSILON)
 
 
     def calculate_probability(self, states: SeqInput[StateT], observed: SeqInput[ValueT], *, log = True) -> float:
-        """Calculates the joint probability of a state sequence and observation sequence
+        """Calculates the joint probability of a state sequence and observation sequence.
 
         
         Args
         ----
         states : SeqInput of StateT
-            The sequence of states
+            The sequence of states.
 
         observed : SeqInput of ValueT
-            The sequence of values
+            The sequence of values.
         
         log : boolean, optional, keyword-only, default True 
-            Wether to perform the calculations in log space
+            Wether to perform the calculations in log space.
 
             
         Returns
         -------
         probability : float
-            the joint probability if `log=False` or its base-10 logarithm if `log=True`
+            the joint probability if `log=False`, or its base-10 logarithm if `log=True`,
+            of the state sequence and the observation sequence.
         """
 
         observed = names_to_indexes(observed, self.values)
@@ -548,32 +560,32 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         
         """
         Simulates a random walk through the chain making random
-        emissions for each state if desired and prints the result if desired
+        emissions for each state if desired and prints the result if desired.
         
 
         Args
         ----
         steps : int
-            number of steps of the walk
+            Number of steps of the walk.
         
         start : int or StateT, optional
             specific state to start the walk in. 
-            If None, one is chosen based on the initial probabilities
+            If None, one is chosen based on the initial probabilities.
         
         seed : int, optional, keyword-only
-            Seed integer to ensure reproducible walks
+            Seed integer to ensure reproducible walks.
 
         emit : boolean, optional, keyword-only, default True
-            wether to simulate emissions along the walk
+            Wether to simulate emissions along the walk.
 
         as_arrays : boolean, optional, keyword-only, default False
-            wether to return the walk (and emissions if `emit=True`) as arrays or print the result
+            Wether to return the walk (and emissions if `emit=True`) as arrays
 
             
         Returns
         -------
         ndarray, tuple, or None
-            depending on the `emit` and `as_array` flags:
+            Depending on the `emit` and `as_array` flags:
             
             * **ndarray** : Returned when `as_array=True`and `emit=False`. 
                 A 1D array of shape `(steps,)` containing the sequence of visited `StateT` labels.
@@ -582,7 +594,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                 A tuple of two 1D arrays of shape `(steps,)`. The first containing the sequence of 
                 visited `StateT` labels. The second containing the sequence of emited `ValueT` labels. 
 
-            * **None** : Returned when `as_array=False`. The sequence is processed
+            * **None** : Returned when `as_array=False`. The sequences are processed
                 as a string according to `seqobs_pretty_print` and printed directly
                 to standard output.
         """
@@ -599,16 +611,16 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
     
     def random_emissions(self, hidden_sequence: SeqInput[StateT], *, seed: int = None) -> NDArray:
-        """Simulates random emissions from a provided state sequence
+        """Simulates random emissions from a provided state sequence.
 
         
         Args
         ----
         hidden_sequence : SeqInput of StateT
-            The sequence of hidden states
+            The sequence of hidden states.
 
         seed : int, optional, keyword-only
-            Seed integer to ensure reproducible emissions
+            Seed integer to ensure reproducible emissions.
 
             
         Returns
@@ -637,32 +649,33 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
     def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas: Literal[False] = False) -> np.float64:...
 
     def forward_algorithm(self, observed: SeqInput[ValueT], *, log = True, use_alfas = False) -> AlgArray2D[np.float64] | np.float64:
-        """computes the probability of a sequence of observations
+        """Computes the probability of a sequence of observations.
 
         
         Args
         ----
         observed : SeqInput of ValueT
-            The sequence of observations
+            The sequence of observations.
             
         log : boolean, optional, keyword-only, default True 
-            Wether to perform the calculations in log space
+            Wether to perform the calculations in log space.
         
         use_alfas : boolean, optional, keyword-only, default False
-            Wether to return the matrix used for the calculations
+            Wether to return the matrix used for the calculations.
 
             
         Returns
         -------
         AlgArray2D or float64
-            depending on the `use_alfas` flag:
+            Depending on the `use_alfas` flag:
 
-            * **AlgArray2D of float64** : Returned when `use_alfas=True`
+            * **AlgArray2D of float64** : Returned when `use_alfas=True`.
                 The partial probabilities matrix calculated throughout
-                the algorithm
+                the algorithm;
 
-            * **float64** : Returned when `use_alfas=False`
-                the total probability of observing the `observed` sequence
+            * **float64** : Returned when `use_alfas=False`.
+                The total probability if `log=False`, or its base-10 logarithm if `log=True`, 
+                of observing the `observed` sequence.
         """
 
         T: Time = len(observed)
@@ -682,9 +695,8 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                 else:
                     alfas[t+1,j] =             np.sum(alfas[t] *     self.tmat[:, j]) *     self.emat[j, observed[t+1]]
 
-
-        if use_alfas: return alfas 
-        
+        # return logic
+        if use_alfas: return alfas
         else:
             if log: total_probability = logaddexp10_reduce(alfas[-1])
             else:   total_probability =             np.sum(alfas[-1])
@@ -698,34 +710,35 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
     def backward_algorithm(self, observed: SeqInput[ValueT], *, log = True,  use_betas: Literal[True] = False) -> AlgArray2D[np.float64]:...
 
     def backward_algorithm(self, observed: SeqInput[ValueT], *, log = True,  use_betas = False) -> AlgArray2D[np.float64] | np.float64:
-        """computes the probability of a sequence of observations
+        """Computes the probability of a sequence of observations.
 
         
         Args
         ----
         observed : SeqInput of ValueT
-            The sequence of observations
+            The sequence of observations.
             
         log : boolean, optional, keyword-only, default True 
-            Wether to perform the calculations in log space
+            Wether to perform the calculations in log space.
         
         use_betas : boolean, optional, keyword-only, default False
-            Wether to return the matrix used for the calculations
+            Wether to return the matrix used for the calculations.
 
             
         Returns
         -------
         AlgArray2D or float64
-            depending on the `use_betas` flag:
+            Depending on the `use_betas` flag:
 
-            * **AlgArray2D of float64** : Returned when `use_betas=True`
+            * **AlgArray2D of float64** : Returned when `use_betas=True`.
                 The partial probabilities matrix calculated throughout
-                the algorithm
+                the algorithm;
 
-            * **float64** : Returned when `use_betas=False`
-                the total probability of observing the `observed` sequence
+            * **float64** : Returned when `use_alfas=False`.
+                The total probability if `log=False`, or its base-10 logarithm if `log=True`, 
+                of observing the `observed` sequence.
         """
-        
+
         T: Time = len(observed)
         
         observed = names_to_indexes(observed, self.values)
@@ -741,6 +754,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                 else:
                     betas[t, i] =             np.sum(    self.tmat[i, :] *     self.emat[:, observed[t+1]] * betas[t+1, :])
         
+        # return logic
         if use_betas: return betas
         else:
             if log: total_probability = logaddexp10_reduce(      self.log_pi + self.log_emat[:, observed[0]] + betas[0, :])
@@ -849,6 +863,68 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
                                 tuple[np.float64, list[LabelT] | list[StateT], AlgArray2D[np.float64], AlgArray2D[int]]
                                 ]:
         
+        """Determines the most likely hidden state sequence to have emitted the
+        `observed` sequence.
+
+        For HMMs where the hidden states are mostly "structural", a dictionary 
+        mapping the state identifiers to possibly non-unique labels can be passed
+        as to make the resulting hidden sequence more interpretable with the
+        `state_labels` argument.
+
+
+        Args
+        ----
+        observed : SeqInput of ValueT 
+            The sequence of observations.
+        
+        state_labels : dict of {StateT: LabelT}, optional, default None
+            The dictionary of labels to aply to the decoded hidden state sequence. 
+        
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space.
+
+        use_results : boolean, optional, keyword-only, default False 
+            Wether to return the probability and hidden sequence as variables.
+            If True, the two are included in the return tuple as a float and a list, respectively.
+        
+        return_original : boolean, optional, keyword-only, default False 
+            Wether to apply the labels to the hidden sequence. 
+            If True, the hidden states in the decoded sequence are the ones 
+            stored in the `states` attribute even if `state_labels` is passed.
+            Implemented for practicity to compare the actual hidden states with
+            their representation without the need to remove `state_labels` 
+            when calling the function.
+        
+        use_matrices : boolean, optional, keyword-only, default False 
+            Wether to include the matrices used for the calculations in the return tuple.
+
+            
+        Returns:
+            out (tuple or None):
+            Depending on the `use_results`, `use_matrices`, and `return_original` flags:
+
+        * **out** : *tuple of*
+            * **probability** : *float64* : If `use_results=True`. 
+                The probability that the decoded hidden sequence originated the passed observed sequence;
+
+            * **hidden_sequence** : *list of*
+                * *StateT* : If `state_labels` is not passed or `return_original=True`;
+                * *LabelT* : If `state_labels` is provided and `return_original=False`.
+                
+            \tIf `use_results=True`. 
+            \tThe sequence of hidden states;
+
+            * **delta** : *AlgArray2D of float64* : If `use_matrices=True`.
+                The matrix containing the maximum probability of each state at each time;
+
+            * **psi** : *AlgArray2D of int* : If `use_matrices=True`.
+                The matrix containing the maximizer state of each state's probability at each time.
+            
+        * **out** : *None*: If `use_results=False` and `use_matrices=False`. The sequence is processed
+            as a string according to `seqobs_pretty_print` and printed directly to standard output.
+
+        """
+        
         T = len(observed)
         observed = names_to_indexes(observed, self.values)
 
@@ -876,8 +952,8 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         retvals = []
 
         if use_matrices:
-            if not use_results:
-                return deltas, psis
+            if not use_results:             # se for só para usar as matrizes, 
+                return deltas, psis         # não vale a pena fazer o traceback
             retvals.extend([deltas, psis])
 
 
@@ -893,13 +969,14 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
         X_star = indexes_to_names(X_star, self.states)
 
-
+        # converter os estados com as labels
         if state_labels is not None and not return_original:
             labeled_X_star = list(map(lambda st: state_labels[st], X_star))
             return_sequence = labeled_X_star
         else:
             return_sequence = X_star
         
+        # remaining return logic
         if use_results:
             retvals = [p_star, return_sequence] + retvals
         
@@ -914,7 +991,31 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         print(msg)
 
 
-    def _baum_welch_helper(self, sequence: SeqInput[ValueT], *, log = True):
+    def _baum_welch_helper(self, sequence: SeqInput[ValueT], *, log: bool = True
+    
+        ) -> tuple[AlgArray2D[np.float64], AlgArray3D[np.float64]] | Literal[-1]:
+        
+        """Calculates the gamma and xi matrices for a single sequence.
+
+        
+        Args
+        ----
+        sequence : SeqInput of ValueT 
+            The observed sequence.
+
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space.
+
+
+        Returns
+        -------
+        matrices : tuple of (AlgArray2D of float64 , AlgArray3D of float64)
+            The gamma and xi matrices, respectively, for the passed sequence.
+
+        exit_code : int, -1
+            If the sequence is impossible to occur with the current parameters.
+        """
+
         T: Time = len(sequence)
         sequence = names_to_indexes(sequence, self.values)
 
@@ -922,15 +1023,19 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
         betas = self.backward_algorithm(sequence, log=log, use_betas=True)
         
         gamas: AlgArray2D[np.float64] = np.zeros((T, self.nstates))
-        csis:  AlgArray3D = np.zeros((T, self.nstates, self.nstates))
+        csis:  AlgArray3D[np.float64] = np.zeros((T, self.nstates, self.nstates))
 
+        # denominador comum para os cálculos de gama e csi
         if log:
             P_seq_given_theta = logaddexp10_reduce(alfas[0] + betas[0])
+
+            if np.isneginf(P_seq_given_theta):
+                return -1
         else:
             P_seq_given_theta =             np.sum(alfas[0] * betas[0])
 
-        if P_seq_given_theta == 0 and not log:
-            P_seq_given_theta = 1
+            if P_seq_given_theta == 0:
+                return -1
 
         for t in range(T):
             if log:
@@ -948,18 +1053,63 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
         return gamas, csis
     
-    def _baum_welch_algorithm_step(self, sequences: list[SeqInput[ValueT]], *, log = True, verbose = 0) -> tuple[Matrix2D[np.float64], Emission2D[np.float64], Vector1D[np.float64]]:
-        all_gamas: list[AlgArray2D[np.float64] ] = []
-        all_csis:  list[AlgArray3D] = []
+
+    def _baum_welch_algorithm_step(self, 
+                                   sequences: list[SeqInput[ValueT]], 
+                                   *, 
+                                   log:         bool    = True, 
+                                   verbose:     int     = 0, 
+                                   frequency:   int     = 100
+                                   ) -> tuple[
+                                       Matrix2D[np.float64], 
+                                       Emission2D[np.float64], 
+                                       Vector1D[np.float64]]:
+        
+        """Calculates the updated parameters for one iteration of the Baum-Welch algorithm for multiple sequences.
+
+        
+        Args
+        ----
+        sequences : list of SeqInput of ValueT 
+            The list of observed sequences.
+
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space.
+
+        verbose : int, optional, keyword-only, default 0 
+            Desired level of information to present during the algorithm.
+            if equal to 2 or greater, a message confirming progress is printed every (`frequency`) sequences. 
+
+        frequency : int, optional, keyword-only, default 100 
+            Number of sequences between messages if `verbose >= 2`.
+
+            
+        Returns
+        -------
+        new_params : tuple of (Matrix2D of float64 , Emission2D of float64 , Vector1D of float64)
+            The updated transition matrix, emission matrix, and initial distribution, respectively.
+
+        exit_code : int, -1
+            If any of the sequences is impossible to occur with the current parameters.
+        """
+
+        all_gamas: list[AlgArray2D[np.float64]] = []
+        all_csis:  list[AlgArray3D[np.float64]] = []
         nseqs = len(sequences)
         sequences = list(sequences)
 
         for r, seq in enumerate(sequences):
             seq = names_to_indexes(seq, self.values)
             sequences[r] = seq
-            seq_gamas, seq_csis = self._baum_welch_helper(seq, log=log)
+            matrices = self._baum_welch_helper(seq, log=log)
             
-            if verbose>1 and r%100 == 0: print(f"seq {r}: gamas e csis calculados")
+            # sequência impossível
+            if matrices == -1:
+                return -1
+            
+            seq_gamas, seq_csis = matrices
+
+            if verbose>1 and r%frequency == 0: print(f"seq {r}: gamas e csis calculados")
             
             all_gamas.append(seq_gamas)
             all_csis.append(seq_csis)
@@ -1015,7 +1165,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
                 for j in range(self.nvalues):
                     new_emat_num[:,j] += np.sum(all_gamas[r][seq==j], 0)
-                    new_emat_den[:,j] += (np.sum(all_gamas[r],0))
+                    new_emat_den[:,j] += np.sum(all_gamas[r], 0)
 
             new_pi /= nseqs
             new_tmat = new_tmat_num/new_tmat_den
@@ -1023,12 +1173,65 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
 
             return new_tmat, new_emat, new_pi
     
-    def baum_welch_algorithm(self, sequences: list[SeqInput[ValueT]], *, max_loops: int = 20, convergence_limit: float = 1e-10, log = True, verbose = 0):
+
+    def baum_welch_algorithm(self, 
+                             sequences: list[SeqInput[ValueT]], 
+                             *, 
+                             max_loops:         int     = 20, 
+                             convergence_limit: float   = 1e-10,
+                             log:               bool    = True, 
+                             verbose:           int     = 0, 
+                             frequency:         int     = 100) -> None:
+        
+        """fits the model to a sequence or set of sequences.
+
+        
+        Args
+        ----
+        sequences : list of SeqInput of ValueT 
+            The list of observed sequences.
+        
+        max_loops : int, optional, keyword-only, default 20
+            The maximum number of update loops to go through, if exceeded, the result message will state as much.
+        
+        convergence_limit : float, optional, keyword-only, default 1e-10
+            How small the difference between the parameters before and after one update loop must be
+            to finish the algorithm. The total difference between parameters is calculated as the sum
+            of the mean differences between every old and new value across each matrix.
+
+        log : boolean, optional, keyword-only, default True 
+            Wether to perform the calculations in log space.
+
+        verbose : int, optional, keyword-only, default 0 
+            Desired level of information to present during the algorithm:
+            If equal to 0 or lesser, only the final message is printed;
+            If equal to 1 or greater, a message confirming progress is printed every update loop;
+            If equal to 2 or greater, a message confirming progress is printed every (`frequency`) sequences.
+
+        frequency : int, optional, keyword-only, default 100 
+            Number of sequences between messages if `verbose >= 2`.
+
+            
+        Returns
+        -------
+        out : None
+            The final message contains: the circumstance in which the algorithm ended,
+            and the final parameters of the model (transition and emission matrices, 
+            and initial and stationary distributions), and is printed directly to standard output.
+        """
+
         converged = False
+        failed = False
+        msg = ""
         i=0
         while not converged:
             if verbose>0: print(f"loop {i}")
-            new_tmat, new_emat, new_pi = self._baum_welch_algorithm_step(sequences, log=log, verbose=verbose)
+            results = self._baum_welch_algorithm_step(sequences, log=log, verbose=verbose, frequency=frequency)
+            if results == -1:
+                msg += "Treino interrompido: sequência impossível, considere ajustar os parâmetros iniciais\n"
+                failed = True
+                break
+            new_tmat, new_emat, new_pi = results
             change_A = np.mean(np.abs(self.tmat-new_tmat))
             change_B = np.mean(np.abs(self.emat-new_emat))
             change_p = np.mean(np.abs(self.initial_dist-new_pi))
@@ -1038,13 +1241,18 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
             self.emat = new_emat
             self.initial_dist = new_pi
             if i > max_loops:
-                raise Exception("Os parâmetros não convergiram")
+                msg += "Os parâmetros não convergiram dentro dos limites especificados"
         
         # re-calcular distribuição estacionária
         self.__init__(self.tmat, self.emat, states=self.states, values=self.values, initial_distribution=self.initial_dist)
-        return ("HMM treinado com sucesso, parâmetros finais:\n\n"
-              f"Matriz de transmissão\n{self.indexed_tmat.round(5)}\n\n"
-              f"Matriz de emissão\n{self.indexed_emat.round(5)}\n\n"
-              f"estado inicial\n{self.indexed_init_dist.round(5)}\n\n"
-              f"estado estacionário\n{self.indexed_stationary.round(5)}\n\n"
-        )
+        
+        if converged and not failed:
+            msg += "HMM treinado com sucesso!\n"
+              
+        msg += "parâmetros finais:\n\n"\
+                f"Matriz de transmissão\n{self.indexed_tmat.round(5)}\n\n"\
+                f"Matriz de emissão\n{self.indexed_emat.round(5)}\n\n"\
+                f"estado inicial\n{self.indexed_init_dist.round(5)}\n\n"\
+                f"estado estacionário\n{self.indexed_stationary.round(5)}\n\n"
+        
+        print(msg)
