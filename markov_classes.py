@@ -920,7 +920,7 @@ class HiddenMarkovModel[StateT=int, ValueT=int]:
             * **psi** : *AlgArray2D of int* : If `use_matrices=True`.
                 The matrix containing the maximizer state of each state's probability at each time.
             
-        * **out** : *None*: If `use_results=False` and `use_matrices=False`. The sequence is processed
+        * **out** : *None* : If `use_results=False` and `use_matrices=False`. The sequence is processed
             as a string according to `seqobs_pretty_print` and printed directly to standard output.
 
         """
