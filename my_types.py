@@ -1,14 +1,14 @@
 r"""
-Type aliases and generics for clarity of Markov Model related implementations
+Type aliases and generics for clarity of Markov Model related implementations.
 
 Attributes
 ----------
 StateT : TypeVar
-    Generic type variable representing state identifiers 
+    Generic type variable representing state identifiers.
     (typically `str` or `int`).
 
 ValueT : TypeVar 
-    Generic type variable representing emission/observation values 
+    Generic type variable representing emission/observation values.
     (typically `str` or `int`).
 
 LabelT : TypeVar
@@ -21,13 +21,13 @@ SeqInput
 
 
 Time    : TypeAlias 
-    semantic alias for an integer (`int`) representing sequence length
+    Semantic alias for an integer (`int`) representing sequence length.
 
 NStates : TypeAlias 
-    semantic alias for an integer (`int`) representing number of states
+    Semantic alias for an integer (`int`) representing number of states.
 
 NValues : TypeAlias 
-    semantic alias for an integer (`int`) representing number of possible values for the observations
+    Semantic alias for an integer (`int`) representing number of possible values for the observations.
 
 
 Vector1D : TypeAlias
